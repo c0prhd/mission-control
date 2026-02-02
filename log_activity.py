@@ -254,7 +254,8 @@ if __name__ == "__main__":
                         print(f"   Asset: {m.get('asset')} {m.get('frequency', '')}")
     elif args.mission:
         tags = args.tags.split(",") if args.tags else None
-        status = "inbox" if args.inbox else None
+        # Allow --mission-status to set initial status, or --inbox for inbox
+        status = args.mission_status if args.mission_status else ("inbox" if args.inbox else None)
         create_mission(
             title=args.mission,
             description=args.description,

@@ -84,6 +84,96 @@ def log_activity(agent_id, action, result, asset=None, freq=None, details=None):
         cmd += f' --details "{details}"'
     run_cmd(cmd)
 
+def create_finding_card(agent_id, findings):
+    """Create a finding card in the review column for human review."""
+    asset = findings.get("asset", "?")
+    freq = findings.get("freq", "?")
+    analysis = findings.get("analysis", {})
+
+    # Determine if this finding is notable enough to create a card
+    sigma_ratio = analysis.get("sigma_ratio")
+    gap_ratio = analysis.get("gap_ratio")
+    crps = analysis.get("crps")
+    backtest_crps = analysis.get("backtest_crps")
+    error_pct = analysis.get("error_pct")
+
+    # Build assessment
+    issues = []
+    severity = "medium"
+
+    if sigma_ratio:
+        if sigma_ratio < 0.7:
+            issues.append(f"UNDER-predicting by {(1-sigma_ratio)*100:.0f}%")
+            severity = "high"
+        elif sigma_ratio < 0.85:
+            issues.append(f"Under-predicting by {(1-sigma_ratio)*100:.0f}%")
+        elif sigma_ratio > 1.3:
+            issues.append(f"OVER-predicting by {(sigma_ratio-1)*100:.0f}%")
+            severity = "high"
+        elif sigma_ratio > 1.15:
+            issues.append(f"Over-predicting by {(sigma_ratio-1)*100:.0f}%")
+
+    if gap_ratio:
+        if gap_ratio > 2.0:
+            issues.append(f"Gap ratio {gap_ratio:.2f} (CRITICAL)")
+            severity = "high"
+        elif gap_ratio > 1.5:
+            issues.append(f"Gap ratio {gap_ratio:.2f} (poor)")
+        elif gap_ratio > 1.2:
+            issues.append(f"Gap ratio {gap_ratio:.2f} (needs work)")
+
+    # Check if actual CRPS is much worse than backtest potential
+    if crps and backtest_crps and crps > backtest_crps * 1.5:
+        gap_from_potential = crps / backtest_crps
+        issues.append(f"Actual CRPS {gap_from_potential:.1f}x worse than backtest")
+        if gap_from_potential > 2.0:
+            severity = "high"
+
+    # Only create card if there are notable issues
+    if not issues:
+        log(f"  No notable issues for {asset} {freq} - skipping review card")
+        return False
+
+    # Build title and description
+    title = f"🔍 {asset} {freq.upper()}: {issues[0]}"
+
+    description_lines = [
+        f"Investigation by {agent_id} agent",
+        f"Score Delay: {findings.get('score_delay', 'unknown')}",
+        "",
+        "Findings:",
+    ]
+    for issue in issues:
+        description_lines.append(f"- {issue}")
+
+    description_lines.append("")
+    description_lines.append("Metrics:")
+    if sigma_ratio:
+        description_lines.append(f"- Sigma Ratio: {sigma_ratio:.3f}")
+    if crps:
+        description_lines.append(f"- Actual CRPS: {crps:.2f}")
+    if backtest_crps:
+        description_lines.append(f"- Backtest CRPS: {backtest_crps:.2f}")
+    if error_pct:
+        description_lines.append(f"- Error: {error_pct:.1f}%")
+    if gap_ratio:
+        description_lines.append(f"- Gap Ratio: {gap_ratio:.3f}")
+
+    description = " | ".join(description_lines)
+
+    # Create the mission in review status
+    # Use shell escaping for title
+    title_escaped = title.replace("'", "'\\''")
+    cmd = f"python3 {LOG_ACTIVITY} --mission '{title_escaped}' --asset {asset} --freq {freq} --priority {severity} --mission-status review --tags finding,investigate"
+
+    output, code = run_cmd(cmd)
+    if code == 0:
+        log(f"  Created finding card in review: {title[:50]}...")
+        return True
+    else:
+        log(f"  Failed to create finding card: {output}")
+        return False
+
 def parse_mission_title(title):
     """Parse mission title to extract asset and frequency."""
     # Format: "BTC HIGH: gap 1.186" or "Investigate SPYX performance"
@@ -135,17 +225,28 @@ def run_investigation(asset, freq, hours=24):
 
     # Parse key metrics from output
     try:
-        # Look for sigma ratio
-        sigma_match = re.search(r'sigma_ratio[:\s]+([0-9.]+)', output, re.IGNORECASE)
+        # Look for sigma ratio - format: "Sigma Ratio:       0.43 (bias: -56.6%)"
+        sigma_match = re.search(r'Sigma\s+Ratio:\s+([0-9.]+)', output)
         if sigma_match:
             findings["analysis"]["sigma_ratio"] = float(sigma_match.group(1))
 
-        # Look for CRPS
-        crps_match = re.search(r'CRPS[:\s]+([0-9.]+)', output, re.IGNORECASE)
+        # Look for CRPS - format: "Avg Actual CRPS:   1647.97" or "Avg Backtest CRPS: 824.05"
+        # Use actual CRPS (what we're getting on the network)
+        crps_match = re.search(r'Avg Actual CRPS:\s+([0-9.]+)', output)
         if crps_match:
             findings["analysis"]["crps"] = float(crps_match.group(1))
 
-        # Look for gap ratio
+        # Look for backtest CRPS (what we could achieve)
+        backtest_crps_match = re.search(r'Avg Backtest CRPS:\s+([0-9.]+)', output)
+        if backtest_crps_match:
+            findings["analysis"]["backtest_crps"] = float(backtest_crps_match.group(1))
+
+        # Look for error percentage
+        error_match = re.search(r'Avg Error:\s+([0-9.]+)%', output)
+        if error_match:
+            findings["analysis"]["error_pct"] = float(error_match.group(1))
+
+        # Look for gap ratio in output if present
         gap_match = re.search(r'gap[_\s]?ratio[:\s]+([0-9.]+)', output, re.IGNORECASE)
         if gap_match:
             findings["analysis"]["gap_ratio"] = float(gap_match.group(1))
@@ -245,7 +346,11 @@ def process_investigation_mission(agent_id, mission, valid_assets):
     if append_to_memory(agent_id, finding_text):
         log(f"  Finding saved to MEMORY.md")
 
-    # Mark mission done
+    # Create finding card in review column for human review
+    if findings.get("status") == "success":
+        create_finding_card(agent_id, findings)
+
+    # Mark original mission done
     update_mission_status(mission_id, "done")
     log(f"  Completed investigation: {asset} {freq}")
 
