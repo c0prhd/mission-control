@@ -87,23 +87,33 @@ const COLUMNS = [
   { id: "done", label: "ARCHIVED", color: "#34d399", description: "Knowledge captured" },
 ];
 
-function MissionCard({ mission, agents }: { mission: Mission; agents: Agent[] }) {
+interface MissionCardProps {
+  mission: Mission;
+  agents: Agent[];
+  onArchive?: (id: any) => void;
+  showArchiveButton?: boolean;
+}
+
+function MissionCard({ mission, agents, onArchive, showArchiveButton }: MissionCardProps) {
   const agent = agents.find(a => a.agentId === mission.assignedTo);
   const priorityClass = mission.priority === "high" ? "priority-high" :
                         mission.priority === "low" ? "priority-low" : "";
   const isScheduled = mission.tags?.includes("scheduled") || mission.scheduledFor;
   const scheduledClass = isScheduled ? "mission-scheduled" : "";
 
-  // Determine if this is an investigation mission
-  const isInvestigation = mission.tags?.includes("investigate") ||
+  // Determine if this is an investigation/finding mission
+  const isFinding = mission.tags?.includes("finding") ||
+                    mission.title.startsWith("🔍");
+  const isInvestigation = isFinding ||
+                          mission.tags?.includes("investigate") ||
                           mission.title.toLowerCase().includes("investigate") ||
                           mission.title.toLowerCase().includes("gap");
 
   return (
-    <div className={`mission-card ${priorityClass} ${scheduledClass}`}>
+    <div className={`mission-card ${priorityClass} ${scheduledClass} ${isFinding ? "mission-finding" : ""}`}>
       <div className="mission-header">
         <div className="mission-title">
-          {isInvestigation && <span className="investigation-icon">🔍</span>}
+          {isInvestigation && !isFinding && <span className="investigation-icon">🔍</span>}
           {mission.title}
         </div>
         {mission.scheduledFor && (
@@ -135,11 +145,33 @@ function MissionCard({ mission, agents }: { mission: Mission; agents: Agent[] })
           </span>
         )}
       </div>
+      {showArchiveButton && onArchive && (
+        <button
+          className="archive-button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onArchive(mission._id);
+          }}
+          title="Mark as reviewed and archive"
+        >
+          ✓ Archive
+        </button>
+      )}
     </div>
   );
 }
 
 export default function MissionBoard({ missions, agents }: MissionBoardProps) {
+  const updateStatus = useMutation(api.missions.updateStatus);
+
+  const handleArchive = async (missionId: any) => {
+    try {
+      await updateStatus({ id: missionId, status: "done" });
+    } catch (error) {
+      console.error("Failed to archive mission:", error);
+    }
+  };
+
   return (
     <main className="mission-board">
       <div className="board-header">
@@ -151,6 +183,7 @@ export default function MissionBoard({ missions, agents }: MissionBoardProps) {
       <div className="board-columns">
         {COLUMNS.map((column) => {
           const columnMissions = missions.filter(m => m.status === column.id);
+          const isReviewColumn = column.id === "review";
           return (
             <div key={column.id} className="board-column">
               <div className="column-header" style={{ borderTopColor: column.color }}>
@@ -160,7 +193,13 @@ export default function MissionBoard({ missions, agents }: MissionBoardProps) {
               <div className="column-description">{column.description}</div>
               <div className="column-cards">
                 {columnMissions.map((mission) => (
-                  <MissionCard key={mission._id} mission={mission} agents={agents} />
+                  <MissionCard
+                    key={mission._id}
+                    mission={mission}
+                    agents={agents}
+                    showArchiveButton={isReviewColumn}
+                    onArchive={handleArchive}
+                  />
                 ))}
               </div>
             </div>
