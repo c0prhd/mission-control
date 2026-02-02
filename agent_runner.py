@@ -377,7 +377,7 @@ def process_crypto_missions():
     if processed > 0:
         log(f"  Completed {processed} investigations")
 
-    update_agent_status(agent_id, "idle")
+    update_agent_status(agent_id, "online")
 
 def process_gold_missions():
     """Process investigation missions for gold agent."""
@@ -395,7 +395,7 @@ def process_gold_missions():
     for mission in missions[:2]:
         process_investigation_mission(agent_id, mission, valid_assets)
 
-    update_agent_status(agent_id, "idle")
+    update_agent_status(agent_id, "online")
 
 def process_equities_missions():
     """Process investigation missions for equities agent."""
@@ -426,7 +426,7 @@ def process_equities_missions():
     for mission in sorted_missions[:3]:  # Max 3 per run
         process_investigation_mission(agent_id, mission, valid_assets)
 
-    update_agent_status(agent_id, "idle")
+    update_agent_status(agent_id, "online")
 
 def main():
     log("=" * 60)
