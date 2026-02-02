@@ -1,6 +1,6 @@
 # Investigation System Documentation
 
-**Last Updated:** 2026-02-02
+**Last Updated:** 2026-02-02 (Auto Model Selector added)
 
 ## Overview
 
@@ -31,9 +31,10 @@ The Investigation System is a zero-LLM-token automated pipeline for monitoring a
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         CRON JOBS                                    │
 │                                                                      │
-│  */15 * * * *  agent_runner.py      # Process assigned missions     │
-│  */5  * * * *  fix_scheduled.mjs    # Set countdown timers          │
-│  */30 * * * *  optimize_and_deploy  # Sigma optimization (separate) │
+│  */15 * * * *  agent_runner.py          # Process assigned missions │
+│  */5  * * * *  fix_scheduled.mjs        # Set countdown timers      │
+│  */30 * * * *  auto_model_selector HIGH # Auto switch models (HIGH) │
+│  0 */4 * * *   auto_model_selector LOW  # Auto switch models (LOW)  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -109,6 +110,62 @@ Cards include:
 - Metrics (sigma ratio, CRPS, gap ratio)
 - Score delay reminder
 - "✓ Archive" button for human review
+
+### 5. Auto Model Selector (NEW)
+
+**Location:** `/mnt/bittensor-synth/auto_model_selector.py`
+**Schedule:** HIGH every 30 min, LOW every 4 hours
+**Logs:** `/tmp/auto_model_high.log`, `/tmp/auto_model_low.log`
+
+The auto model selector is an **autonomous optimization system** that:
+1. Fetches real prices from Pyth API (no leaderboard dependency)
+2. Tests all 8 models with local CRPS scoring
+3. Compares against currently deployed model
+4. **Switches only if >10% improvement** (prevents flip-flopping)
+5. Auto-deploys changes to miners
+6. Creates finding cards in FINDINGS column (tagged "auto-switch")
+
+**Key Difference from Agent System:**
+| Aspect | Agent System | Auto Model Selector |
+|--------|--------------|---------------------|
+| Trigger | Missions in "assigned" column | Cron schedule |
+| Workflow | Coordinator → Agent → Investigate | Standalone automation |
+| Action | Analyzes and reports | **Acts first**, then notifies |
+| Mission Control | Creates cards after investigation | Creates cards **only when switching** |
+
+**Models Tested:**
+- adaptive, adaptive_blend, adaptive_egarch, adaptive_harp
+- adaptive_tod, adaptive_vov, har_rv, regime_switching
+
+**Improvement Threshold:** 10% (configurable via `IMPROVEMENT_THRESHOLD`)
+
+**Manual Run:**
+```bash
+# Test HIGH frequency (no deploy)
+cd /mnt/bittensor-synth && ./venv/bin/python auto_model_selector.py --freq high
+
+# Test and deploy
+cd /mnt/bittensor-synth && ./venv/bin/python auto_model_selector.py --freq high --deploy
+
+# Test specific asset
+cd /mnt/bittensor-synth && ./venv/bin/python auto_model_selector.py --asset BTC --freq high
+```
+
+### 6. Local CRPS Test
+
+**Location:** `/mnt/bittensor-synth/local_crps_test.py`
+
+Pure local CRPS testing against Pyth prices - **no leaderboard dependency**.
+
+```bash
+# Test all HIGH frequency assets
+cd /mnt/bittensor-synth && ./venv/bin/python local_crps_test.py --all --freq high
+
+# Test specific asset
+cd /mnt/bittensor-synth && ./venv/bin/python local_crps_test.py --asset BTC --freq high
+```
+
+This decouples model evaluation from leaderboard rankings, allowing faster iteration.
 
 ---
 
@@ -207,6 +264,12 @@ crontab -l
 # Expected entries:
 */15 * * * * python3 ~/.clawdbot/dashboard/agent_runner.py >> ~/.clawdbot/agent_runner.log 2>&1
 */5  * * * * cd ~/.clawdbot/dashboard && node fix_scheduled.mjs >> ~/.clawdbot/fix_scheduled.log 2>&1
+
+# Auto Model Selector - HIGH frequency every 30 min
+*/30 * * * * cd /mnt/bittensor-synth && /mnt/bittensor-synth/venv/bin/python auto_model_selector.py --freq high --deploy >> /tmp/auto_model_high.log 2>&1
+
+# Auto Model Selector - LOW frequency every 4 hours
+0 */4 * * * cd /mnt/bittensor-synth && /mnt/bittensor-synth/venv/bin/python auto_model_selector.py --freq low --deploy >> /tmp/auto_model_low.log 2>&1
 ```
 
 ### Systemd Service (Dashboard)
@@ -352,14 +415,35 @@ If metrics are within acceptable ranges, no card is created (this is expected).
 
 ## Integration with Optimization
 
-This investigation system is **separate from** the main optimization pipeline:
+The system has three automation layers:
 
-| System | Purpose | Schedule |
-|--------|---------|----------|
-| Investigation | Analyze patterns, surface findings | Every 15 min |
-| Optimization | Tune sigma_scale parameters | Every 30 min |
+| System | Purpose | Schedule | Action |
+|--------|---------|----------|--------|
+| Investigation (agent_runner) | Analyze patterns, surface findings | Every 15 min | Reports only |
+| Auto Model Selector | Switch underperforming models | HIGH: 30min, LOW: 4hr | **Modifies models** |
+| Sigma Optimization | Tune sigma_scale parameters | Every 30 min | Modifies params |
 
-The optimization pipeline (`optimize_and_deploy.bat`) runs independently and actually changes parameters. The investigation system only observes and reports - it does not modify any miner parameters.
+**Data Flow:**
+```
+Auto Model Selector                    Investigation System
+        │                                      │
+        │ (switches model if >10% better)      │ (analyzes performance)
+        ▼                                      ▼
+┌─────────────────┐                   ┌─────────────────┐
+│ model_selection │                   │ Finding Cards   │
+│     .json       │                   │ (FINDINGS col)  │
+└────────┬────────┘                   └────────┬────────┘
+         │                                     │
+         ▼                                     ▼
+    Deployed to                          Human Review
+     Miners                              & Archive
+```
+
+**Key Files Modified by Automation:**
+| File | Modified By | Purpose |
+|------|-------------|---------|
+| `model_selection.json` | Auto Model Selector | Which model per asset |
+| `adaptive_params.json` | Sigma Optimization | sigma_scale values |
 
 ---
 
@@ -380,11 +464,12 @@ The only LLM usage is during initial setup/debugging conversations with Claude.
 ## Future Enhancements
 
 Potential improvements:
-1. **Feedback loop:** Automatically adjust optimization based on findings
+1. ~~**Feedback loop:** Automatically adjust optimization based on findings~~ ✅ IMPLEMENTED (Auto Model Selector)
 2. **Time-of-day analysis:** Track performance by hour
 3. **Regime detection:** Identify volatility regime changes
 4. **Alert thresholds:** Configurable notification thresholds
 5. **Historical trending:** Track improvement over time
+6. **Multi-model ensemble:** Combine top N models dynamically
 
 ---
 
@@ -399,3 +484,8 @@ Potential improvements:
 | Run agents manually | `python3 ~/.clawdbot/dashboard/agent_runner.py` |
 | Fix assignments | `cd ~/.clawdbot/dashboard && node fix_assignments.mjs` |
 | Set agent online | `python3 ~/.clawdbot/dashboard/log_activity.py --agent <name> --status online` |
+| **Auto model selector (HIGH)** | `cd /mnt/bittensor-synth && ./venv/bin/python auto_model_selector.py --freq high --deploy` |
+| **Auto model selector (LOW)** | `cd /mnt/bittensor-synth && ./venv/bin/python auto_model_selector.py --freq low --deploy` |
+| **Local CRPS test** | `cd /mnt/bittensor-synth && ./venv/bin/python local_crps_test.py --all --freq high` |
+| View auto-switch log (HIGH) | `tail -f /tmp/auto_model_high.log` |
+| View auto-switch log (LOW) | `tail -f /tmp/auto_model_low.log` |
