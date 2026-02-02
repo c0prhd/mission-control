@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment files
+.env.local
+.env
+
+# Logs
+*.log
+dashboard.log
+nohup.out
+
+# Runtime state (regenerated)
+backoff_state.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Convex generated files (optional - keep for now)
+# convex/_generated/
