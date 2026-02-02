@@ -14,12 +14,12 @@ export default function Header({ agentsActive, totalAgents, missionsActive, tota
     <header className="header">
       <div className="header-left">
         <div className="logo">
-          <span className="logo-icon">🎯</span>
-          <span className="logo-text">MISSION CONTROL</span>
+          <span className="logo-icon">🔍</span>
+          <span className="logo-text">INVESTIGATION HQ</span>
           <span className="logo-badge">SYNTH</span>
         </div>
       </div>
-      
+
       <div className="header-stats">
         <div className="stat">
           <div className="stat-value">{agentsActive}</div>
@@ -27,7 +27,14 @@ export default function Header({ agentsActive, totalAgents, missionsActive, tota
         </div>
         <div className="stat">
           <div className="stat-value">{missionsActive}</div>
-          <div className="stat-label">MISSIONS ACTIVE</div>
+          <div className="stat-label">INVESTIGATIONS</div>
+        </div>
+        <div className="stat delay-info">
+          <div className="stat-value delay-badge">
+            <span className="delay-high">HIGH: 1-6h</span>
+            <span className="delay-low">LOW: 24-48h</span>
+          </div>
+          <div className="stat-label">SCORE DELAYS</div>
         </div>
       </div>
 

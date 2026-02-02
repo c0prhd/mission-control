@@ -54,6 +54,11 @@ body {
 .status-badge .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-green); animation: pulse 2s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
+/* Score delay info in header */
+.delay-info .stat-value { font-size: 14px; display: flex; gap: 12px; }
+.delay-badge .delay-high { background: #fef3c7; color: #92400e; padding: 3px 8px; border-radius: 4px; font-weight: 600; font-size: 11px; }
+.delay-badge .delay-low { background: #dbeafe; color: #1e40af; padding: 3px 8px; border-radius: 4px; font-weight: 600; font-size: 11px; }
+
 .main-layout { display: grid; grid-template-columns: 220px 1fr 300px; flex: 1; overflow: hidden; }
 
 .sidebar { background: var(--bg-secondary); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; }
@@ -75,12 +80,14 @@ body {
 .mission-board { background: var(--bg-tertiary); display: flex; flex-direction: column; overflow: hidden; }
 .board-header { padding: 16px 24px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); }
 .board-header h2 { font-size: 12px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.5px; }
+.board-subtitle { font-size: 11px; color: var(--text-muted); margin-top: 4px; font-weight: 400; }
 
 .board-columns { display: flex; gap: 16px; padding: 20px; overflow-x: auto; flex: 1; }
 .board-column { min-width: 220px; width: 220px; display: flex; flex-direction: column; }
 .column-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-top: 3px solid var(--text-muted); margin-bottom: 12px; }
 .column-title { font-size: 11px; font-weight: 700; color: var(--text-secondary); letter-spacing: 0.5px; }
 .column-count { font-size: 12px; font-weight: 600; color: var(--text-muted); background: var(--bg-secondary); padding: 2px 8px; border-radius: 10px; }
+.column-description { font-size: 10px; color: var(--text-muted); margin-bottom: 12px; font-style: italic; }
 
 .column-cards { display: flex; flex-direction: column; gap: 10px; flex: 1; }
 .mission-card { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; cursor: pointer; transition: all 0.15s; box-shadow: var(--shadow-sm); }
@@ -95,6 +102,14 @@ body {
 .mission-tag.freq { background: #fef3c7; color: #92400e; }
 .mission-tag.scheduled { background: #f3e8ff; color: #7c3aed; }
 .mission-assignee { margin-left: auto; font-size: 16px; }
+
+/* Score delay badges on mission cards */
+.score-delay-badge { font-size: 9px; font-weight: 500; padding: 2px 5px; border-radius: 3px; opacity: 0.8; }
+.score-delay-badge.delay-badge-high { background: #fef3c7; color: #92400e; }
+.score-delay-badge.delay-badge-low { background: #e0e7ff; color: #3730a3; }
+
+/* Investigation icon */
+.investigation-icon { margin-right: 4px; }
 
 /* Scheduled missions with countdown */
 .mission-card.mission-scheduled { border-left: 3px solid #7c3aed; background: linear-gradient(135deg, var(--bg-secondary) 0%, #faf5ff 100%); }
